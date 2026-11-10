@@ -118,4 +118,82 @@ final class HistoryStoreTests: TempDirTestCase {
             XCTAssertNil(bytes.range(of: Data(canary.utf8)), "plaintext found in \(url.lastPathComponent)")
         }
     }
+
+    // MARK: Memory-only clips (copies containing a secret format)
+
+    func addBriefly(_ s: HistoryStore, _ text: String, at now: Date = Date()) throws {
+        try s.add(textPayload(text), kind: .text, preview: text, thumbnail: nil, expiresAfter: HistoryStore.secretLifetime, now: now)
+    }
+
+    func testSecretLifetimeIsTenMinutes() {
+        XCTAssertEqual(HistoryStore.secretLifetime, 600)
+    }
+
+    func testBriefClipIsInHistoryAndPastableButNeverOnDisk() throws {
+        let s = try open()
+        try add(s, "saved")
+        let filesBefore = clipFiles()
+        try addBriefly(s, "KEY-CANARY")
+        XCTAssertEqual(s.entries.map(\.preview), ["KEY-CANARY", "saved"])
+        XCTAssertNotNil(s.entries[0].expires)
+        XCTAssertEqual(try s.payload(for: s.entries[0].id), textPayload("KEY-CANARY"))
+        XCTAssertEqual(clipFiles(), filesBefore, "no clip file written")
+        XCTAssertEqual(try open().entries.map(\.preview), ["saved"], "not in the saved index")
+        for (url, bytes) in allFileBytes(under: dir) {
+            XCTAssertNil(bytes.range(of: Data("KEY-CANARY".utf8)), "found in \(url.lastPathComponent)")
+        }
+    }
+
+    func testBriefClipStaysThroughUseAndIsGoneAfterTenMinutes() throws {
+        let s = try open()
+        let t0 = Date()
+        try addBriefly(s, "key", at: t0)
+        try add(s, "later")
+        try s.moveToTop(s.entries[1].id) // pasted from history: still memory-only
+        XCTAssertEqual(try open().entries.map(\.preview), ["later"])
+        XCTAssertFalse(s.removeExpired(now: t0.addingTimeInterval(599)))
+        XCTAssertEqual(s.entries.map(\.preview), ["key", "later"])
+        let id = s.entries[0].id
+        XCTAssertTrue(s.removeExpired(now: t0.addingTimeInterval(600)))
+        XCTAssertEqual(s.entries.map(\.preview), ["later"])
+        XCTAssertThrowsError(try s.payload(for: id), "payload is gone too")
+    }
+
+    func testCopyingAgainRestartsTheTime() throws {
+        let s = try open()
+        let t0 = Date()
+        try addBriefly(s, "key", at: t0)
+        try addBriefly(s, "key", at: t0.addingTimeInterval(500))
+        XCTAssertEqual(s.entries.count, 1)
+        s.removeExpired(now: t0.addingTimeInterval(700))
+        XCTAssertEqual(s.entries.map(\.preview), ["key"])
+        s.removeExpired(now: t0.addingTimeInterval(1100))
+        XCTAssertTrue(s.entries.isEmpty)
+    }
+
+    func testAddingRemovesExpiredClips() throws {
+        let s = try open()
+        let t0 = Date()
+        try addBriefly(s, "key", at: t0)
+        try s.add(textPayload("next"), kind: .text, preview: "next", thumbnail: nil, now: t0.addingTimeInterval(601))
+        XCTAssertEqual(s.entries.map(\.preview), ["next"])
+    }
+
+    func testBriefClipsAreEvictedDeletedAndClearedLikeAnyClip() throws {
+        let s = try open(capacity: 2)
+        try addBriefly(s, "k1")
+        let k1 = s.entries[0].id
+        try add(s, "a"); try add(s, "b")
+        XCTAssertEqual(s.entries.map(\.preview), ["b", "a"])
+        XCTAssertThrowsError(try s.payload(for: k1), "evicted payload released")
+        try addBriefly(s, "k2")
+        let k2 = s.entries[0].id
+        try s.delete(k2)
+        XCTAssertThrowsError(try s.payload(for: k2))
+        try addBriefly(s, "k3")
+        let k3 = s.entries[0].id
+        try s.clear()
+        XCTAssertTrue(s.entries.isEmpty)
+        XCTAssertThrowsError(try s.payload(for: k3))
+    }
 }

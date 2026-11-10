@@ -53,6 +53,7 @@ final class PasteboardWatcher {
     }
 
     private func tick() {
+        store.removeExpired()
         guard !reading else { return }
         let count = pb.changeCount
         guard tracker.observe(count) else { return }
@@ -82,12 +83,20 @@ final class PasteboardWatcher {
         case .skipped:
             Log.app.info("clip skipped: empty, unsupported or too large")
         case .record(let clip):
-            do {
-                try store.add(clip.payload, kind: clip.kind, preview: clip.preview, thumbnail: clip.thumbnail, searchText: clip.searchText)
-                Log.app.info("clip recorded: \(clip.kind.rawValue, privacy: .public), history=\(self.store.entries.count, privacy: .public)")
-            } catch {
-                Log.app.error("clip store failed: \(String(describing: type(of: error)), privacy: .public)")
-            }
+            record(clip, expiresAfter: nil)
+        case .recordBriefly(let clip):
+            record(clip, expiresAfter: HistoryStore.secretLifetime)
+        }
+    }
+
+    private func record(_ clip: CapturedClip, expiresAfter: TimeInterval?) {
+        do {
+            try store.add(clip.payload, kind: clip.kind, preview: clip.preview, thumbnail: clip.thumbnail,
+                          searchText: clip.searchText, expiresAfter: expiresAfter)
+            let how = expiresAfter == nil ? "recorded" : "kept in memory for 10 min (secret pattern)"
+            Log.app.info("clip \(how, privacy: .public): \(clip.kind.rawValue, privacy: .public), history=\(self.store.entries.count, privacy: .public)")
+        } catch {
+            Log.app.error("clip store failed: \(String(describing: type(of: error)), privacy: .public)")
         }
     }
 

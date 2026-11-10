@@ -21,7 +21,7 @@ final class ClipReaderTests: PasteboardTestCase {
         XCTAssertEqual(ClipReaderCore.handle(request(sources: ["com.1password.1password"]), pasteboard: pb).result, .dropped(.ignoredApp))
         pb.clearContents()
         pb.setString("AKIAIOSFODNN7EXAMPLE", forType: .string)
-        XCTAssertEqual(ClipReaderCore.handle(request(), pasteboard: pb).result, .dropped(.secretPattern))
+        guard case .recordBriefly? = ClipReaderCore.handle(request(), pasteboard: pb).result else { return XCTFail() }
     }
 
     func testStaleRequestIsNotRead() {

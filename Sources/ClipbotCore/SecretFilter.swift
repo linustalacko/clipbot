@@ -4,7 +4,8 @@ import Foundation
 ///
 /// Order matters: marker types and the ignored-app list are checked from pasteboard
 /// *metadata only* (`dropReason`), so secret data is never read. Text that
-/// passes is then checked against well-known secret formats (`looksLikeSecret`).
+/// passes is then checked against well-known secret formats (`looksLikeSecret`); those copies are
+/// kept in memory only, briefly (see `ClipGate`).
 public struct SecretFilter: @unchecked Sendable {
     /// nspasteboard.org conventions + 1Password's legacy marker.
     public static let markerTypes: Set<String> = [
@@ -27,7 +28,7 @@ public struct SecretFilter: @unchecked Sendable {
         self.ignoredBundleIDs = ignoredBundleIDs
     }
 
-    public enum Reason: String, Codable, Equatable, Sendable { case secureInput, marker, ignoredApp, secretPattern }
+    public enum Reason: String, Codable, Equatable, Sendable { case secureInput, marker, ignoredApp }
 
     /// Metadata-only check. `sourceBundleIDs` = every app that was frontmost since the last change.
     public func dropReason(types: [String], sourceBundleIDs: Set<String>) -> Reason? {

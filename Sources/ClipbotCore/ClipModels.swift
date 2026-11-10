@@ -39,4 +39,7 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
     /// The clip's text (capped), so search can match more than the preview without opening the
     /// sealed payload. nil for clips recorded before search existed; they're searched by preview.
     public let searchText: String?
+    /// Set only on clips kept in memory (they contain a secret format); they're removed at this
+    /// time and never written to disk. nil for every saved clip.
+    public var expires: Date? = nil
 }

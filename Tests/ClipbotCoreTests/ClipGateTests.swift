@@ -11,6 +11,11 @@ final class ClipGateTests: PasteboardTestCase {
         ClipGate.evaluate(items: pb.pasteboardItems ?? [], secureInput: secureInput, sourceBundleIDs: sources, filter: filter)
     }
 
+    /// A copy with a secret format is kept, but only in memory and only briefly (HistoryStore).
+    func assertKeptBriefly(_ r: ClipGate.Result, file: StaticString = #filePath, line: UInt = #line) {
+        guard case .recordBriefly = r else { return XCTFail("expected recordBriefly, got \(r)", file: file, line: line) }
+    }
+
     func testSecureInputDropsBeforeAnythingIsRead() {
         pb.setString("typed into a password field", forType: .string)
         XCTAssertEqual(gate(secureInput: true), .dropped(.secureInput))
@@ -36,34 +41,34 @@ final class ClipGateTests: PasteboardTestCase {
         XCTAssertEqual(gate(sources: ["com.apple.keychainaccess", "com.apple.TextEdit"]), .dropped(.ignoredApp))
     }
 
-    func testSecretInRTFOnlyClipIsDropped() throws {
+    func testSecretInRTFOnlyClipIsKeptBriefly() throws {
         let key = "sk-" + String(repeating: "aB3", count: 14)
         let rtf = try rtfData(key)
         pb.setData(rtf, forType: .rtf)
-        XCTAssertEqual(gate(), .dropped(.secretPattern))
+        assertKeptBriefly(gate())
     }
 
-    func testSecretPlainTextAndURLDropped() {
+    func testSecretPlainTextIsKeptBriefly() {
         pb.setString("ghp_" + String(repeating: "a1", count: 18), forType: .string)
-        XCTAssertEqual(gate(), .dropped(.secretPattern))
+        assertKeptBriefly(gate())
     }
 
-    func testSecretTextAlongsideImageIsDropped() {
+    func testSecretTextAlongsideImageIsKeptBriefly() {
         // Spreadsheets put a picture of the cell next to its text.
         let img = NSImage(size: NSSize(width: 10, height: 10), flipped: false) { r in NSColor.blue.setFill(); r.fill(); return true }
         let item = NSPasteboardItem()
         item.setData(img.tiffRepresentation!, forType: .tiff)
         item.setString("AKIAIOSFODNN7EXAMPLE", forType: .string)
         pb.writeObjects([item])
-        XCTAssertEqual(gate(), .dropped(.secretPattern))
+        assertKeptBriefly(gate())
     }
 
-    func testSecretTextAlongsidePDFIsDropped() {
+    func testSecretTextAlongsidePDFIsKeptBriefly() {
         let item = NSPasteboardItem()
         item.setData(Data("%PDF-1.4".utf8), forType: .pdf)
         item.setString("sk_live_" + String(repeating: "Ab3", count: 9), forType: .string)
         pb.writeObjects([item])
-        XCTAssertEqual(gate(), .dropped(.secretPattern))
+        assertKeptBriefly(gate())
     }
 
     func testRTFDOnlyCopyIsSkippedNotParsed() {
